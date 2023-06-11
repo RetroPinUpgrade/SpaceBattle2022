@@ -9,3 +9,7 @@ This code requires an RPU board version 101 or greater (CPU interposer board). F
 Build an RPU board 101 or greater, get an Arduino MEGA 2560 Pro, and optionally get a WAV Trigger for audio.  
   
 Put all of the code here in a folder called SpaceBattle2022 and then build/load the code onto the Arduino MEGA 2560 Pro. The new code will boot automatically in the machine. Hold the Credit/Reset button as you power on the machine in order to boot to the original code.  
+  
+## Example WAV Trigger files  
+https://drive.google.com/file/d/1_C8CnMKe5Sp17lRkMOMhQG2z2sviNWwg/view?usp=sharing   
+
