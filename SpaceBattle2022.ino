@@ -601,7 +601,7 @@ void setup() {
   }
 
   // Set up the chips and interrupts
-  RPU_InitializeMPU(SW_CREDIT_RESET);
+  RPU_InitializeMPU(RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_PERFORM_MPU_TEST, SW_CREDIT_RESET);
   RPU_DisableSolenoidStack();
   RPU_SetDisableFlippers(true);
 
