@@ -37,7 +37,7 @@
 
 
 #include <HardwareSerial.h>
-#define WTSerial Serial
+#define WTSerial Serial1
 
 class SendOnlyWavTrigger
 {
