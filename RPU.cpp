@@ -22,10 +22,11 @@
  
 #include <Arduino.h>
 #include <EEPROM.h>
-//#define DEBUG_MESSAGES    1
 #define RPU_CPP_FILE
 #include "RPU_config.h"
 #include "RPU.h"
+
+#define DEBUG_MESSAGES  0
 
 #ifndef RPU_OS_HARDWARE_REV
 #define RPU_OS_HARDWARE_REV 1
@@ -66,6 +67,7 @@ boolean UsesM6800Processor = false;
 #define DEFAULT_SOLENOID_STATE          0x1F
 #define ST5_CONTINUOUS_SOLENOID_BIT     0x80
 #else 
+#define RPU_NUM_SOLENOIDS               15
 #define NUM_SWITCH_BYTES                5
 #define NUM_SWITCH_BYTES_ON_U10_PORT_A  5
 #define MAX_NUM_SWITCHES                40
@@ -77,6 +79,7 @@ boolean UsesM6800Processor = false;
 #endif
 
 #elif (RPU_MPU_ARCHITECTURE >= 10) 
+#define RPU_NUM_SOLENOIDS             22
 #define NUM_SWITCH_BYTES              8
 #define MAX_NUM_SWITCHES              64
 #ifndef INTERRUPT_OCR1A_COUNTER
@@ -115,8 +118,11 @@ volatile byte SwitchesNow[NUM_SWITCH_BYTES];
 byte DipSwitches[4];
 #endif
 
-
+#if (RPU_OS_HARDWARE_REV>2)
 #define SOLENOID_STACK_SIZE 150
+#else 
+#define SOLENOID_STACK_SIZE 60
+#endif
 #define SOLENOID_STACK_EMPTY 0xFF
 volatile byte SolenoidStackFirst;
 volatile byte SolenoidStackLast;
@@ -595,7 +601,7 @@ void RPU_SetAddressPinsDirection(boolean pinsOutput) {
 
 void RPU_SetDataPinsDirection(boolean pinsOutput) {
   for (int count=0; count<8; count++) {
-    pinMode(22, pinsOutput?OUTPUT:INPUT);
+    pinMode(22+count, pinsOutput?OUTPUT:INPUT);
   }
 }
 
@@ -890,14 +896,15 @@ void WaitClockCycle(int numCycles=1) {
 #error "RPU_OS_HARDWARE_REV >100 requires ATMega2560, check RPU_Config.h and adjust settings"
 #endif
 
-#define RPU_VMA_PIN           40
-#define RPU_RW_PIN            3
-#define RPU_PHI2_PIN          39
-#define RPU_SWITCH_PIN        38
-#define RPU_BUFFER_DISABLE    5
-#define RPU_HALT_PIN          41
-#define RPU_RESET_PIN         42
-#define RPU_DIAGNOSTIC_PIN    44
+#define RPU_VMA_PIN                   40
+#define RPU_RW_PIN                    3
+#define RPU_PHI2_PIN                  39
+#define RPU_SWITCH_PIN                38
+#define RPU_BUFFER_DISABLE            5
+#define RPU_HALT_PIN                  41
+#define RPU_RESET_PIN                 42
+#define RPU_BA_PIN                    43
+#define RPU_DIAGNOSTIC_PIN            44
 #define RPU_DISABLE_PHI_FROM_MPU      7
 #define RPU_DISABLE_PHI_FROM_CPU      6
 #define RPU_BOARD_SEL_0               30
@@ -915,12 +922,12 @@ void RPU_SetAddressPinsDirection(boolean pinsOutput) {
 
 void RPU_SetDataPinsDirection(boolean pinsOutput) {
   for (int count=0; count<8; count++) {
-    pinMode(22, pinsOutput?OUTPUT:INPUT);
+    pinMode(22+count, pinsOutput?OUTPUT:INPUT);
   }
 }
 
 
-// REVISION 101 HARDWARE
+// REVISION 101/102 HARDWARE
 void RPU_DataWrite(int address, byte data) {
   
   // Set data pins to output
@@ -1269,7 +1276,12 @@ unsigned long RPU_TestPIAs() {
   unsigned long piaErrors = 0;
   
   byte piaResult = RPU_DataRead(PIA_DISPLAY_CONTROL_A);
-  if (piaResult!=0x3D) piaErrors |= RPU_RET_PIA_1_ERROR;
+  if (piaResult!=0x3D) {
+    piaErrors |= RPU_RET_PIA_1_ERROR;
+    if (DEBUG_MESSAGES) Serial.write("* Error with Display PIA\n");
+  } else {
+    if (DEBUG_MESSAGES) Serial.write("* No error with Display PIA\n");
+  }
   piaResult = RPU_DataRead(PIA_DISPLAY_CONTROL_B);
   if (piaResult!=0x3D) piaErrors |= RPU_RET_PIA_1_ERROR;
 
@@ -1421,7 +1433,7 @@ int SpaceLeftOnSolenoidStack() {
 
 
 void RPU_PushToSolenoidStack(byte solenoidNumber, byte numPushes, boolean disableOverride) {
-  if (solenoidNumber>14) return;
+  if (solenoidNumber>=RPU_NUM_SOLENOIDS) return;
 
   // if the solenoid stack is disabled and this isn't an override push, then return
   if (!disableOverride && !SolenoidStackEnabled) return;
@@ -1888,9 +1900,15 @@ void RPU_SetDimDivisor(byte level, byte divisor) {
   if (level==2) DimDivisor2 = divisor;
 }
 
+// left shift is iterative on Arduinos, so a bit array is suprisingly faster
+byte BitShiftValues[8] = {0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80};
+
 void RPU_SetLampState(int lampNum, byte s_lampState, byte s_lampDim, int s_lampFlashPeriod) {
   if (lampNum>=RPU_MAX_LAMPS || lampNum<0) return;
-  
+  byte lampRow = lampNum%8;
+  byte lampCol = lampNum/8;
+  byte lampBit = BitShiftValues[lampRow];
+
   if (s_lampState) {
     int adjustedLampFlash = s_lampFlashPeriod/50;
     
@@ -1899,23 +1917,23 @@ void RPU_SetLampState(int lampNum, byte s_lampState, byte s_lampDim, int s_lampF
     
     // Only turn on the lamp if there's no flash, because if there's a flash
     // then the lamp will be turned on by the ApplyFlashToLamps function
-    if (s_lampFlashPeriod==0) LampStates[lampNum/8] &= ~(0x01<<(lampNum%8));
+    if (s_lampFlashPeriod==0) LampStates[lampCol] &= ~(lampBit);
     LampFlashPeriod[lampNum] = adjustedLampFlash;
   } else {
-    LampStates[lampNum/8] |= (0x01<<(lampNum%8));
+    LampStates[lampCol] |= lampBit;
     LampFlashPeriod[lampNum] = 0;
   }
 
   if (s_lampDim & 0x01) {    
-    LampDim1[lampNum/8] |= (0x01<<(lampNum%8));
+    LampDim1[lampCol] |= lampBit;
   } else {
-    LampDim1[lampNum/8] &= ~(0x01<<(lampNum%8));
+    LampDim1[lampCol] &= ~lampBit;
   }
 
   if (s_lampDim & 0x02) {    
-    LampDim2[lampNum/8] |= (0x01<<(lampNum%8));
+    LampDim2[lampCol] |= lampBit;
   } else {
-    LampDim2[lampNum/8] &= ~(0x01<<(lampNum%8));
+    LampDim2[lampCol] &= ~lampBit;
   }
 
 }
@@ -2431,7 +2449,7 @@ ISR(TIMER1_COMPA_vect) {    //This is the interrupt request
   // Blank Displays
   RPU_DataWrite(ADDRESS_U10_A_CONTROL, RPU_DataRead(ADDRESS_U10_A_CONTROL) & 0xF7);
   // Set all 5 display latch strobes high
-  RPU_DataWrite(ADDRESS_U11_A, (RPU_DataRead(ADDRESS_U11_A)/* & 0x03*/) | 0x01);
+  RPU_DataWrite(ADDRESS_U11_A, (RPU_DataRead(ADDRESS_U11_A)) | 0x01);
   RPU_DataWrite(ADDRESS_U10_A, 0x0F);
 
   byte displayStrobeMask = 0x01;
@@ -2501,6 +2519,86 @@ ISR(TIMER1_COMPA_vect) {    //This is the interrupt request
   RPU_DataWrite(ADDRESS_U10_A, backupU10A);    
 
 }
+
+/*
+ISR(TIMER1_COMPA_vect) {    //This is the interrupt request
+  // Backup U10A
+  byte backupU10A = RPU_DataRead(ADDRESS_U10_A);
+  
+  // Disable lamp decoders & strobe latch
+  RPU_DataWrite(ADDRESS_U10_A, 0xFF);
+  RPU_DataWrite(ADDRESS_U10_B_CONTROL, RPU_DataRead(ADDRESS_U10_B_CONTROL) | 0x08);
+  RPU_DataWrite(ADDRESS_U10_B_CONTROL, RPU_DataRead(ADDRESS_U10_B_CONTROL) & 0xF7);
+#ifdef RPU_OS_USE_AUX_LAMPS
+  // Also park the aux lamp board 
+  RPU_DataWrite(ADDRESS_U11_A_CONTROL, RPU_DataRead(ADDRESS_U11_A_CONTROL) | 0x08);
+  RPU_DataWrite(ADDRESS_U11_A_CONTROL, RPU_DataRead(ADDRESS_U11_A_CONTROL) & 0xF7);    
+#endif
+
+  // Blank Displays
+  RPU_DataWrite(ADDRESS_U10_A_CONTROL, RPU_DataRead(ADDRESS_U10_A_CONTROL) & 0xF7);
+  // Set all 5 display latch strobes high
+  RPU_DataWrite(ADDRESS_U11_A, (RPU_DataRead(ADDRESS_U11_A) & 0x03) | 0x01);
+  RPU_DataWrite(ADDRESS_U10_A, 0x0F);
+
+  // Write current display digits to 5 displays
+  for (int displayCount=0; displayCount<5; displayCount++) {
+
+    if (CurrentDisplayDigit<RPU_OS_NUM_DIGITS) {
+      // The BCD for this digit is in b4-b7, and the display latch strobes are in b0-b3 (and U11A:b0)
+      byte displayDataByte = ((DisplayDigits[displayCount][CurrentDisplayDigit])<<4) | 0x0F;
+      byte displayEnable = ((DisplayDigitEnable[displayCount])>>CurrentDisplayDigit)&0x01;
+
+      // if this digit shouldn't be displayed, then set data lines to 0xFX so digit will be blank
+      if (!displayEnable) displayDataByte = 0xFF;
+
+      // Set low the appropriate latch strobe bit
+      if (displayCount<4) {
+        displayDataByte &= ~(0x01<<displayCount);
+      }
+      // Write out the digit & strobe (if it's 0-3)
+      RPU_DataWrite(ADDRESS_U10_A, displayDataByte);
+      if (displayCount==4) {            
+        // Strobe #5 latch on U11A:b0
+        RPU_DataWrite(ADDRESS_U11_A, RPU_DataRead(ADDRESS_U11_A) & 0xFE);
+      }
+
+      // Need to delay a little to make sure the strobe is low for long enough
+      //WaitClockCycle(4);
+      delayMicroseconds(8);
+
+      // Put the latch strobe bits back high
+      if (displayCount<4) {
+        displayDataByte |= 0x0F;
+        RPU_DataWrite(ADDRESS_U10_A, displayDataByte);
+      } else {
+        RPU_DataWrite(ADDRESS_U11_A, RPU_DataRead(ADDRESS_U11_A) | 0x01);
+        
+        // Set proper display digit enable
+#ifdef RPU_OS_USE_7_DIGIT_DISPLAYS          
+        byte displayDigitsMask = (0x02<<CurrentDisplayDigit) | 0x01;
+#else
+        byte displayDigitsMask = (0x04<<CurrentDisplayDigit) | 0x01;
+#endif          
+        RPU_DataWrite(ADDRESS_U11_A, displayDigitsMask);
+      }
+    }
+  }
+
+  // Stop Blanking (current digits are all latched and ready)
+  RPU_DataWrite(ADDRESS_U10_A_CONTROL, RPU_DataRead(ADDRESS_U10_A_CONTROL) | 0x08);
+
+  // Restore 10A from backup
+  RPU_DataWrite(ADDRESS_U10_A, backupU10A);    
+
+  CurrentDisplayDigit = CurrentDisplayDigit + 1;
+  if (CurrentDisplayDigit>=RPU_OS_NUM_DIGITS) {
+    CurrentDisplayDigit = 0;
+    DisplayOffCycle ^= true;
+  }
+}
+*/
+
 
 void InterruptService3() {
   byte u10AControl = RPU_DataRead(ADDRESS_U10_A_CONTROL);
@@ -2695,7 +2793,7 @@ void InterruptService3() {
         interrupts();
         RPU_DataWrite(ADDRESS_U10_A, 0xFF);
         noInterrupts();
-      
+
         // Latch address & strobe
         RPU_DataWrite(ADDRESS_U10_A, lampData);
 #ifdef RPU_SLOW_DOWN_LAMP_STROBE      
@@ -2736,8 +2834,13 @@ void InterruptService3() {
     RPU_DataWrite(ADDRESS_U10_B_CONTROL, RPU_DataRead(ADDRESS_U10_B_CONTROL) | 0x08);
     RPU_DataWrite(ADDRESS_U10_B_CONTROL, RPU_DataRead(ADDRESS_U10_B_CONTROL) & 0xF7);
 
-    for (int lampByteCount=8; lampByteCount<RPU_NUM_LAMP_BANKS; lampByteCount++) {
+    // For the first four bits of lamps, we're going to look at LampStates[7] again
+    // and use those top 4 bits that we didn't use before. Then we're going
+    // to move on with bytes 8, 9, and 10 for the remaining 24 bits of data
+    byte auxBankNum = 0;
+    for (int lampByteCount=7; lampByteCount<RPU_NUM_LAMP_BANKS; lampByteCount++) {
       for (byte nibbleCount=0; nibbleCount<2; nibbleCount++) {
+        if (lampByteCount==7) nibbleCount = 1; // skip the first nibble of byte 7 because it belongs to primary lamps
         byte nibbleOffset = (nibbleCount)?1:16;
         byte lampOutput = (LampStates[lampByteCount] * nibbleOffset);
         // Every other time through the cycle, we OR in the dim variable
@@ -2747,7 +2850,7 @@ void InterruptService3() {
 
         // The data will be in the upper nibble, but we need the bank count in the lower
         lampOutput &= 0xF0;
-        lampOutput += ((lampByteCount-8)*2+nibbleOffset);
+        lampOutput += auxBankNum;
 
         interrupts();
         RPU_DataWrite(ADDRESS_U10_A, 0xFF);
@@ -2757,6 +2860,8 @@ void InterruptService3() {
         RPU_DataWrite(ADDRESS_U11_A_CONTROL, RPU_DataRead(ADDRESS_U11_A_CONTROL) | 0x08);
         RPU_DataWrite(ADDRESS_U11_A_CONTROL, RPU_DataRead(ADDRESS_U11_A_CONTROL) & 0xF7);    
         RPU_DataWrite(ADDRESS_U10_A, lampOutput);
+        
+        auxBankNum += 1;
       }
     }
 #endif    
@@ -2917,43 +3022,49 @@ unsigned long RPU_InitializeMPUArch1(unsigned long initOptions, byte creditReset
 
 #if (RPU_OS_HARDWARE_REV==1) or (RPU_OS_HARDWARE_REV==2)
   (void)creditResetSwitch;
+
+  if (initOptions&( RPU_CMD_BOOT_ORIGINAL | RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_BOOT_ORIGINAL_IF_NOT_CREDIT_RESET | 
+                    RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED | RPU_CMD_AUTODETECT_ARCHITECTURE ) ) {
+    retResult |= RPU_RET_OPTION_NOT_SUPPORTED;
+  }
+  
   if (LookFor6800Activity()) {
     if (initOptions&RPU_CMD_INIT_AND_RETURN_EVEN_IF_ORIGINAL_CHOSEN) {
       retResult |= RPU_RET_ORIGINAL_CODE_REQUESTED;
+      return retResult;
     } else {
       while (1);
     }
   }
-  if (initOptions&( RPU_CMD_BOOT_ORIGINAL | RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_BOOT_NEW_IF_CREDIT_RESET | 
-                    RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED | RPU_CMD_AUTODETECT_ARCHITECTURE ) ) {
-    retResult |= RPU_RET_OPTION_NOT_SUPPORTED;
-  }
 #elif (RPU_OS_HARDWARE_REV==3)
   (void)creditResetSwitch;
 
-  if (initOptions&( RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_BOOT_NEW_IF_CREDIT_RESET | 
-                    RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED | RPU_CMD_AUTODETECT_ARCHITECTURE ) ) {
+  if (initOptions&( RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_BOOT_ORIGINAL_IF_NOT_CREDIT_RESET | 
+                    RPU_CMD_AUTODETECT_ARCHITECTURE ) ) {
     retResult |= RPU_RET_OPTION_NOT_SUPPORTED;
   }
 
   pinMode(13, INPUT);
   boolean switchStateClosed = digitalRead(13) ? false : true;
   boolean bootToOriginal = false;
-  if (  (initOptions & RPU_CMD_BOOT_ORIGINAL) || 
-        (switchStateClosed && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED)) ||
-        (!switchStateClosed && (initOptions&RPU_CMD_BOOT_NEW_IF_SWITCH_CLOSED)) ) {
-    bootToOriginal = true;
-  }
-  if ((initOptions & RPU_CMD_BOOT_NEW) || (switchStateClosed && (initOptions&RPU_CMD_BOOT_NEW_IF_SWITCH_CLOSED))) {
-    bootToOriginal = false;
+
+  if (switchStateClosed) {
+    retResult |= RPU_RET_SELECTOR_SWITCH_ON;
   }
 
+  if (  (initOptions & RPU_CMD_BOOT_ORIGINAL) ||
+        (switchStateClosed && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED)) ||
+        (!switchStateClosed && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_NOT_SWITCH_CLOSED)) ) {
+    bootToOriginal = true;
+  }
+  
   if (bootToOriginal) {
     // Let the 680X run 
     pinMode(14, OUTPUT); // Halt
     digitalWrite(14, HIGH);
     if (initOptions&RPU_CMD_INIT_AND_RETURN_EVEN_IF_ORIGINAL_CHOSEN) {
       retResult |= RPU_RET_ORIGINAL_CODE_REQUESTED;
+      return retResult;
     } else {
       while (1);
     }
@@ -3003,7 +3114,7 @@ unsigned long RPU_InitializeMPUArch1(unsigned long initOptions, byte creditReset
   }
 
   boolean creditResetButtonHit = false;
-  if ( creditResetSwitch!=0xFF && (initOptions & (RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_BOOT_NEW_IF_CREDIT_RESET))) {
+  if ( creditResetSwitch!=0xFF && (initOptions & (RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_BOOT_ORIGINAL_IF_NOT_CREDIT_RESET))) {
     // We have to check the credit/reset button to honor the init request
     creditResetButtonHit = CheckCreditResetSwitchArch1(creditResetSwitch);
     if (creditResetButtonHit) {
@@ -3012,16 +3123,12 @@ unsigned long RPU_InitializeMPUArch1(unsigned long initOptions, byte creditReset
   }
 
   boolean bootToOriginal = false;
-  if (  (initOptions & RPU_CMD_BOOT_ORIGINAL) || 
+  if (  (initOptions & RPU_CMD_BOOT_ORIGINAL) ||
         (switchStateClosed && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED)) ||
-        (!creditResetButtonHit && (initOptions&RPU_CMD_BOOT_NEW_IF_CREDIT_RESET)) ||
-        (creditResetButtonHit && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET)) ) {
+        (!switchStateClosed && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_NOT_SWITCH_CLOSED)) ||
+        (creditResetButtonHit && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET)) ||
+        (!creditResetButtonHit && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_NOT_CREDIT_RESET)) ) {
     bootToOriginal = true;
-  }
-  if (  (initOptions & RPU_CMD_BOOT_NEW) || 
-        (switchStateClosed && (initOptions&RPU_CMD_BOOT_NEW_IF_SWITCH_CLOSED)) ||
-        (creditResetButtonHit && (initOptions&RPU_CMD_BOOT_NEW_IF_CREDIT_RESET)) ) {
-    bootToOriginal = false;
   }
 
   if (bootToOriginal) {
@@ -3405,6 +3512,8 @@ boolean CheckCreditResetSwitchArch10(byte creditResetButton) {
 unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditResetSwitch) {
   unsigned long retResult = RPU_RET_NO_ERRORS;
 
+  if (DEBUG_MESSAGES) Serial.write("* Init start\n");
+  
   // put the 680X buffers into tri-state
   pinMode(RPU_BUFFER_DISABLE, OUTPUT);
   digitalWrite(RPU_BUFFER_DISABLE, 1);
@@ -3415,6 +3524,8 @@ unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditRese
   digitalWrite(RPU_HALT_PIN, 0);  
   pinMode(RPU_RESET_PIN, OUTPUT); 
   digitalWrite(RPU_RESET_PIN, 0); 
+  pinMode(RPU_BA_PIN, OUTPUT);
+  digitalWrite(RPU_BA_PIN, 0);
 
   // Determine if we can detect a 
   // 6800 or 6802/8 and possibly override
@@ -3427,8 +3538,13 @@ unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditRese
   // Set VMA, R/W, and PHI2 to OUTPUT
   pinMode(RPU_VMA_PIN, OUTPUT);
   pinMode(RPU_RW_PIN, OUTPUT);
-  if (!UsesM6800Processor) pinMode(RPU_PHI2_PIN, OUTPUT);
-  else pinMode(RPU_PHI2_PIN, INPUT);
+  if (!UsesM6800Processor) {
+    pinMode(RPU_PHI2_PIN, OUTPUT);
+    if (DEBUG_MESSAGES) Serial.write("* compiled for 6802 or 6808\n");
+  } else {
+    pinMode(RPU_PHI2_PIN, INPUT);
+    if (DEBUG_MESSAGES) Serial.write("* compiled for 6800\n");
+  }
   // Make sure PIA IV (solenoid) CB2 is off so that solenoids are off
   RPU_SetAddressPinsDirection(RPU_PINS_OUTPUT);  
   RPU_DataWrite(PIA_SOLENOID_CONTROL_B, 0x30);
@@ -3442,7 +3558,7 @@ unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditRese
   }
 
   boolean creditResetButtonHit = false;
-  if ( creditResetSwitch!=0xFF && (initOptions & (RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_BOOT_NEW_IF_CREDIT_RESET))) {
+  if ( creditResetSwitch!=0xFF && (initOptions & (RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_BOOT_ORIGINAL_IF_NOT_CREDIT_RESET))) {
     // We have to check the credit/reset button to honor the init request
     creditResetButtonHit = CheckCreditResetSwitchArch10(creditResetSwitch);
     if (creditResetButtonHit) {
@@ -3451,16 +3567,13 @@ unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditRese
   }
 
   boolean bootToOriginal = false;
-  if (  (initOptions & RPU_CMD_BOOT_ORIGINAL) || 
-        (switchStateClosed && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED)) ||
-        (!creditResetButtonHit && (initOptions&RPU_CMD_BOOT_NEW_IF_CREDIT_RESET)) ||
-        (creditResetButtonHit && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET)) ) {
+
+  if (  (initOptions & RPU_CMD_BOOT_ORIGINAL) ||
+        (switchStateClosed && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED))  ||
+        (!switchStateClosed && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_NOT_SWITCH_CLOSED))  ||
+        (creditResetButtonHit && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET))  ||
+        (!creditResetButtonHit && (initOptions&RPU_CMD_BOOT_ORIGINAL_IF_NOT_CREDIT_RESET)) ) {
     bootToOriginal = true;
-  }
-  if (  (initOptions & RPU_CMD_BOOT_NEW) || 
-        (switchStateClosed && (initOptions&RPU_CMD_BOOT_NEW_IF_SWITCH_CLOSED)) ||
-        (creditResetButtonHit && (initOptions&RPU_CMD_BOOT_NEW_IF_CREDIT_RESET)) ) {
-    bootToOriginal = false;
   }
 
   if (bootToOriginal) {
@@ -3472,6 +3585,7 @@ unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditRese
     pinMode(RPU_PHI2_PIN, INPUT); // CLOCK
     pinMode(RPU_VMA_PIN, INPUT); // VMA
     pinMode(RPU_RW_PIN, INPUT); // R/W
+    pinMode(RPU_BA_PIN, INPUT);
 
 #if (RPU_OS_HARDWARE_REV==102)
     // We need to make sure the clock direction
@@ -3502,9 +3616,15 @@ unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditRese
     digitalWrite(RPU_RESET_PIN, 1);
 
     if (initOptions&RPU_CMD_INIT_AND_RETURN_EVEN_IF_ORIGINAL_CHOSEN) {
+      if (DEBUG_MESSAGES) { 
+        Serial.write("* original requested\n");
+      }
       retResult |= RPU_RET_ORIGINAL_CODE_REQUESTED;
       return retResult;
     } else {
+      if (DEBUG_MESSAGES) {
+        Serial.write("* original requested, halting\n");      
+      }
       while (1);
     }
   }
@@ -3517,7 +3637,12 @@ unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditRese
   RPU_ClearVariables();
   RPU_SetAddressPinsDirection(RPU_PINS_OUTPUT);
   RPU_InitializePIAs();
-  if (initOptions&RPU_CMD_PERFORM_MPU_TEST) retResult |= RPU_TestPIAs();
+  if (initOptions&RPU_CMD_PERFORM_MPU_TEST) {
+    if (DEBUG_MESSAGES) Serial.write("* Going to test PIAs\n");
+    retResult |= RPU_TestPIAs();
+  } else {
+    if (DEBUG_MESSAGES) Serial.write("* Not asked to test PIAs\n");    
+  }
   RPU_SetupInterrupt();
 
   return retResult;
@@ -3526,11 +3651,36 @@ unsigned long RPU_InitializeMPUArch10(unsigned long initOptions, byte creditRese
 
 #endif
 
+#if (DEBUG_MESSAGES==1)
+unsigned long LastSwitchReport = 0;
+#endif
+
 void RPU_Update(unsigned long currentTime) {
+
+  if (RPU_MPU_ARCHITECTURE==1) {
+    RPU_DataRead(0);
+  }
+  
   RPU_ApplyFlashToLamps(currentTime);
   RPU_UpdateTimedSolenoidStack(currentTime);
 #if (RPU_MPU_ARCHITECTURE>=10) && (defined(RPU_OS_USE_WTYPE_1_SOUND) || defined(RPU_OS_USE_WTYPE_2_SOUND))
   RPU_UpdateTimedSoundStack(currentTime);
+#endif
+
+#if (DEBUG_MESSAGES==1)
+  if (DEBUG_MESSAGES) {
+    if (currentTime>(LastSwitchReport+1000)) {
+      LastSwitchReport = currentTime;
+      char buf[128];
+      Serial.write("Switches = ");
+      for (byte count=0; count<8; count++) {
+        sprintf(buf, "0x%02X", SwitchesNow[count]);
+        Serial.write(buf);
+        if (count<7) Serial.write(", ");
+        else Serial.write("\n");
+      }
+    }
+  }
 #endif
 }
 
