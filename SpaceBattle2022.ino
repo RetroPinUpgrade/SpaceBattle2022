@@ -1933,7 +1933,7 @@ void PlaySoundEffect(unsigned int soundEffectNum, int gain, boolean overrideSele
   gain = test;
 #endif
 
-#if defined(RPU_TYPE_1_SOUND)
+#if defined(RPU_OS_USE_WTYPE_1_SOUND)
   // Only use Type 1 sound if we're below option 6
   if (SoundSelector<6) {
     switch (soundEffectNum) {
@@ -2808,7 +2808,7 @@ int ManageGameMode() {
 
       if (CurrentTime > (LastTimePromptPlayed + 8000)) {
         LastTimePromptPlayed = CurrentTime;
-#ifdef RPU_TYPE_1_SOUND
+#ifdef RPU_OS_USE_WTYPE_1_SOUND
         //        PlaySoundEffect(SOUND_EFFECT_WAITING_FOR_SKILL);
 #endif
         QueueNotification(SOUND_EFFECT_VP_LAUNCH_PROMPT_1_1 + ((CurrentTime % 3) * 4) + CurrentPlayer, 1);
