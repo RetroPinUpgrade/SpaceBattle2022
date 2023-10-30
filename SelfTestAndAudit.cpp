@@ -284,7 +284,7 @@ int RunBaseSelfTest(int curState, boolean curStateChanged, unsigned long Current
       RPU_SetDisplay(0, (unsigned long)soundToPlay, true);
       LastSolTestTime = CurrentTime; // Time the sound started to play
     }
-#elif defined (RPU_TYPE_1_SOUND)
+#elif defined (RPU_OS_USE_WTYPE_1_SOUND)
     byte soundToPlay = (((CurrentTime-LastSelfTestChange)/2000)%31)+1;
     if (SoundPlaying!=soundToPlay) {
       RPU_PushToSoundStack(soundToPlay*256, 8);
