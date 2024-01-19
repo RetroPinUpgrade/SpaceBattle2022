@@ -7,7 +7,7 @@
     See <https://www.gnu.org/licenses/>.
 */
 
-#include "RPU_config.h"
+#include "RPU_Config.h"
 #include "RPU.h"
 #include "SpaceBattle2022.h"
 #include "SelfTestAndAudit.h"
