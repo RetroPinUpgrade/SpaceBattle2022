@@ -20,7 +20,7 @@
 
 #include <Arduino.h>
 #include "SelfTestAndAudit.h"
-#include "RPU_config.h"
+#include "RPU_Config.h"
 #include "RPU.h"
 
 #define MACHINE_STATE_ATTRACT         0
