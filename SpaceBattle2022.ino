@@ -7,7 +7,7 @@
     See <https://www.gnu.org/licenses/>.
 */
 
-#include "RPU_Config.h"
+#include "RPU_config.h"
 #include "RPU.h"
 #include "SpaceBattle2022.h"
 #include "SelfTestAndAudit.h"
@@ -23,7 +23,7 @@ SendOnlyWavTrigger wTrig;             // Our WAV Trigger object
 
 #define SPACE_BATTLE_MAJOR_VERSION  2022
 #define SPACE_BATTLE_MINOR_VERSION  2
-#define DEBUG_MESSAGES  0
+#define DEBUG_MESSAGES  1
 
 
 void PlaySoundEffect(unsigned int soundEffectNum, int gain = 1000, boolean overrideSelector = false);
@@ -522,6 +522,8 @@ unsigned short InvasionFlashLevel;
 #define SAUCER_VALUE_10K  3
 #define SAUCER_VALUE_EB   4
 
+// functions forward reference
+boolean PlaySoundEffectWhenPossible(unsigned short soundEffectNum, unsigned long requestedPlayTime = 0, unsigned long playUntil = 50, byte priority = 10);
 
 void ReadStoredParameters() {
    for (byte count=0; count<3; count++) {
@@ -601,13 +603,22 @@ void setup() {
   }
 
   // Set up the chips and interrupts
-  RPU_InitializeMPU(RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | RPU_CMD_PERFORM_MPU_TEST, SW_CREDIT_RESET);
+  unsigned long initResult;
+  initResult = RPU_InitializeMPU(   RPU_CMD_BOOT_ORIGINAL_IF_CREDIT_RESET | /*RPU_CMD_BOOT_ORIGINAL_IF_SWITCH_CLOSED |*/
+                                    RPU_CMD_INIT_AND_RETURN_EVEN_IF_ORIGINAL_CHOSEN | RPU_CMD_PERFORM_MPU_TEST, SW_CREDIT_RESET);
+
   RPU_DisableSolenoidStack();
   RPU_SetDisableFlippers(true);
 
+  if (DEBUG_MESSAGES) {
+    char buf[256];
+    sprintf(buf, "initResult = 0x%08lX\n", initResult);
+    Serial.write(buf);
+  }
+
   // Read parameters from EEProm
   ReadStoredParameters();
-  RPU_SetCoinLockout((Credits >= MaximumCredits) ? true : false);
+  RPU_SetCoinLockout((Credits >= MaximumCredits) ? true : false, SOLCONT_COIN_LOCKOUT);
 
   CurrentScores[0] = SPACE_BATTLE_MAJOR_VERSION;
   CurrentScores[1] = SPACE_BATTLE_MINOR_VERSION;
@@ -624,6 +635,11 @@ void setup() {
   StopAudio();
   CurrentTime = millis();
   PlaySoundEffect(SOUND_EFFECT_MACHINE_START);
+  PlaySoundEffectWhenPossible(7 * 256, 1000, 55, 5);
+  PlaySoundEffectWhenPossible(8 * 256, 2000, 55, 5);
+  PlaySoundEffectWhenPossible(31 * 256, 3000, 55, 5);
+  PlaySoundEffectWhenPossible(2 * 256, 4000, 55, 5);
+
 }
 
 byte ReadSetting(byte setting, byte defaultValue) {
@@ -1314,7 +1330,7 @@ boolean AddPlayer(boolean resetNumPlayers = false) {
     Credits -= 1;
     RPU_WriteByteToEEProm(RPU_CREDITS_EEPROM_BYTE, Credits);
     RPU_SetDisplayCredits(Credits, !FreePlayMode);
-    RPU_SetCoinLockout(false);
+    RPU_SetCoinLockout(false, SOLCONT_COIN_LOCKOUT);
   }
   QueueNotification(SOUND_EFFECT_VP_ADD_PLAYER_1 + (CurrentNumPlayers - 1), 10);
 
@@ -1342,10 +1358,10 @@ void AddCredit(boolean playSound = false, byte numToAdd = 1) {
       RPU_PushToSolenoidStack(SOL_KNOCKER, 8, true); // Units of this era use the knocker for credits
     }
     RPU_SetDisplayCredits(Credits, !FreePlayMode);
-    RPU_SetCoinLockout(false);
+    RPU_SetCoinLockout(false, SOLCONT_COIN_LOCKOUT);
   } else {
     RPU_SetDisplayCredits(Credits, !FreePlayMode);
-    RPU_SetCoinLockout(true);
+    RPU_SetCoinLockout(true, SOLCONT_COIN_LOCKOUT);
   }
 
 }
@@ -1882,7 +1898,7 @@ void InitSoundEffectQueue() {
   }
 }
 
-boolean PlaySoundEffectWhenPossible(unsigned short soundEffectNum, unsigned long requestedPlayTime = 0, unsigned long playUntil = 50, byte priority = 10) {
+boolean PlaySoundEffectWhenPossible(unsigned short soundEffectNum, unsigned long requestedPlayTime, unsigned long playUntil, byte priority) {
   byte count = 0;
   for (count = 0; count < SOUND_EFFECT_QUEUE_SIZE; count++) {
     if (SoundEffectQueue[count].inUse == false) break;
@@ -1894,7 +1910,7 @@ boolean PlaySoundEffectWhenPossible(unsigned short soundEffectNum, unsigned long
   SoundEffectQueue[count].priority = priority;
   SoundEffectQueue[count].inUse = true;
 
-  if (0 && DEBUG_MESSAGES) {
+  if (DEBUG_MESSAGES) {
     char buf[128];
     sprintf(buf, "Sound 0x%04X slotted at %d\n\r", soundEffectNum, count);
     Serial.write(buf);
@@ -2144,7 +2160,7 @@ void UpdateSoundQueue() {
 
     // If a sound has expired, flush it
     if (CurrentTime > SoundEffectQueue[count].playUntil) {
-      if (0 && DEBUG_MESSAGES) {
+      if (DEBUG_MESSAGES) {
         char buf[128];
         sprintf(buf, "Expiring sound in slot %d (CurrentTime=%lu > PlayUntil=%lu)\n\r", count, CurrentTime, SoundEffectQueue[count].playUntil);
         Serial.write(buf);
@@ -2171,14 +2187,13 @@ void UpdateSoundQueue() {
   }
 
   if (highestPrioritySound != 0xFF) {
-
-    /*
-        if (DEBUG_MESSAGES) {
-          char buf[128];
-          sprintf(buf, "Ready to play sound 0x%04X\n\r", SoundEffectQueue[highestPrioritySound].soundEffectNum);
-          Serial.write(buf);
-        }
-    */
+    
+    if (DEBUG_MESSAGES) {
+      char buf[128];
+      sprintf(buf, "Ready to play sound 0x%04X\n\r", SoundEffectQueue[highestPrioritySound].soundEffectNum);
+      Serial.write(buf);
+    }
+    
     if (CurrentSoundPlaying.inUse == false || (CurrentSoundPlaying.inUse && CurrentSoundPlaying.priority < queuePriority)) {
       // Play new sound
       CurrentSoundPlaying.soundEffectNum = SoundEffectQueue[highestPrioritySound].soundEffectNum;
@@ -2374,7 +2389,7 @@ int RunAttractMode(int curState, boolean curStateChanged) {
   }
 
   // Alternate displays between high score and blank
-  if (CurrentTime < 16000) {
+  if (CurrentTime < 2000) {
     if (AttractLastHeadMode != 1) {
       ShowPlayerScores(0xFF, false, false);
       RPU_SetDisplayCredits(Credits, !FreePlayMode);
@@ -2549,7 +2564,7 @@ int InitGamePlay() {
   // us into this mode, so we assume a 1-player game
   // at the moment
   RPU_EnableSolenoidStack();
-  RPU_SetCoinLockout((Credits >= MaximumCredits) ? true : false);
+  RPU_SetCoinLockout((Credits >= MaximumCredits) ? true : false, SOLCONT_COIN_LOCKOUT);
   RPU_TurnOffAllLamps();
   StopAudio();
 
@@ -4899,9 +4914,7 @@ void loop() {
     MachineStateChanged = false;
   }
 
-  RPU_ApplyFlashToLamps(CurrentTime);
-  RPU_UpdateTimedSolenoidStack(CurrentTime);
-  RPU_UpdateTimedSoundStack(CurrentTime);
+  RPU_Update(CurrentTime);
   UpdateSoundQueue();
   ServiceNotificationQueue();
 

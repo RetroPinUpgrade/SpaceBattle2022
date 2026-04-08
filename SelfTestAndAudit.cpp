@@ -20,7 +20,7 @@
 
 #include <Arduino.h>
 #include "SelfTestAndAudit.h"
-#include "RPU_Config.h"
+#include "RPU_config.h"
 #include "RPU.h"
 
 #define MACHINE_STATE_ATTRACT         0
@@ -292,7 +292,7 @@ int RunBaseSelfTest(int curState, boolean curStateChanged, unsigned long Current
       RPU_SetDisplay(0, (unsigned long)soundToPlay, true);
       LastSolTestTime = CurrentTime; // Time the sound started to play
     }
-#elif defined (RPU_TYPE_2_SOUND) 
+#elif defined (RPU_OS_USE_WTYPE_2_SOUND) 
 //    byte soundToPlay = (((CurrentTime-LastSelfTestChange)/1000)%32);
     if (SoundPlaying!=SoundToPlay) {
       RPU_PushToSoundStack(SoundToPlay, 8);
