@@ -1646,6 +1646,12 @@ void RPU_EnableSolenoidStack() {
   SolenoidStackEnabled = true;
 }
 
+void RPU_SetSolenoidDefaultPulse(byte solenoidNumber, byte pulseTimeMS) {
+  (void)solenoidNumber;
+  (void)pulseTimeMS;
+}
+
+
 // RPU_MPU_ARCHITECTURE < 10
 boolean RPU_IsSolenoidStackEnabled() {
   return SolenoidStackEnabled;
@@ -1716,6 +1722,13 @@ void RPU_EnableSolenoidStack() {
 boolean RPU_IsSolenoidStackEnabled() {
   return SolenoidStackEnabled;
 }
+
+#if (RPU_OS_HARDWARE_REV!=200)
+void RPU_SetSolenoidDefaultPulse(byte solenoidNumber, byte pulseTimeMS) {
+  (void)solenoidNumber;
+  (void)pulseTimeMS;
+}
+#endif
 
 
 #endif
@@ -4188,8 +4201,14 @@ void RPU_LISYSendScore(byte displayNumber, byte numDigits) {
 
 void RPU_LISYSetSolenoidPulsetime(byte solNum, byte pulseTime) {
   noInterrupts();
-
+  LISYOutputSerial.write(LISY_CMD_SET_SOLENOID_PULSE_TIME);
+  LISYOutputSerial.write(solNum);
+  LISYOutputSerial.write(pulseTime);
   interrupts();
+}
+
+void RPU_SetSolenoidDefaultPulse(byte solenoidNumber, byte pulseTimeMS) {
+  RPU_LISYSetSolenoidPulsetime(solenoidNumber, pulseTimeMS);
 }
 
 

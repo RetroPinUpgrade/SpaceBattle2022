@@ -7,7 +7,7 @@
     See <https://www.gnu.org/licenses/>.
 */
 
-#include "RPU_config.h"
+#include "RPU_Config.h"
 #include "RPU.h"
 #include "SpaceBattle2022.h"
 #include "SelfTestAndAudit.h"
@@ -640,6 +640,10 @@ void setup() {
   PlaySoundEffectWhenPossible(31 * 256, 3000, 55, 5);
   PlaySoundEffectWhenPossible(2 * 256, 4000, 55, 5);
 
+  RPU_SetSolenoidDefaultPulse(SOL_LEFT_DT_RESET, 50);
+  RPU_SetSolenoidDefaultPulse(SOL_CENTER_LEFT_DT_RESET, 50);
+  RPU_SetSolenoidDefaultPulse(SOL_CENTER_RIGHT_DT_RESET, 50);
+  RPU_SetSolenoidDefaultPulse(SOL_TOP_DT_RESET, 50);
 }
 
 byte ReadSetting(byte setting, byte defaultValue) {

@@ -22,7 +22,7 @@
 #ifndef RPU_OS_H
 
 #define RPU_OS_MAJOR_VERSION  5
-#define RPU_OS_MINOR_VERSION  11
+#define RPU_OS_MINOR_VERSION  12
 
 struct PlayfieldAndCabinetSwitch {
   byte switchNum;
@@ -102,6 +102,7 @@ void RPU_EnableSolenoidStack();
 boolean RPU_IsSolenoidStackEnabled();
 boolean RPU_PushToTimedSolenoidStack(byte solenoidNumber, byte numPushes, unsigned long whenToFire, boolean disableOverride = false);
 void RPU_UpdateTimedSolenoidStack(unsigned long curTime);
+void RPU_SetSolenoidDefaultPulse(byte solenoidNumber, byte pulseTimeMS);
 
 //   Displays
 byte RPU_SetDisplay(int displayNumber, unsigned long value, boolean blankByMagnitude=false, byte minDigits=2, boolean showCommasByMagnitude=false);
