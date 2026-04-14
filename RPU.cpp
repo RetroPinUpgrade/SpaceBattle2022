@@ -4221,9 +4221,11 @@ void RPU_LISYSetSimpleLampState(byte lampNum, byte lampOn) {
   LISYOutputSerial.write(lampNum);
 }
 
-void RPU_LISYSendSolenoidPulse(byte solNum) {  
+void RPU_LISYSendSolenoidPulse(byte solNum) {
+  nointerrupts();
   LISYOutputSerial.write(LISY_CMD_PULSE_SOLENOID);
   LISYOutputSerial.write(solNum);
+  interrupts();
 }
 
 

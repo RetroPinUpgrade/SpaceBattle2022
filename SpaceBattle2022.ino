@@ -3339,6 +3339,7 @@ int ManageGameMode() {
           RPU_SetDisableFlippers(true);
           RPU_TurnOffAllLamps();
           StopBackgroundSong();
+          PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
 //          StopAudio();
           RPU_PushToTimedSolenoidStack(SOL_SAUCER, 16, CurrentTime + 5000, true);
           if (DEBUG_MESSAGES) {
@@ -3476,6 +3477,7 @@ int ManageGameMode() {
       if (GameModeStartTime == 0) {
         RPU_DisableSolenoidStack();
         RPU_SetDisableFlippers(true);
+        PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
         RPU_TurnOffAllLamps();
         GameModeStartTime = CurrentTime;
         GameModeEndTime = CurrentTime + 3000;
@@ -3504,6 +3506,7 @@ int ManageGameMode() {
       if (GameModeStartTime == 0) {
         RPU_DisableSolenoidStack();
         RPU_SetDisableFlippers(true);
+        PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
         RPU_TurnOffAllLamps();
         GameModeStartTime = CurrentTime;
         GameModeEndTime = CurrentTime + 3000;
@@ -3530,6 +3533,7 @@ int ManageGameMode() {
       if (GameModeStartTime == 0) {
         RPU_DisableSolenoidStack();
         RPU_SetDisableFlippers(true);
+        PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
         RPU_TurnOffAllLamps();
         GameModeStartTime = CurrentTime;
         GameModeEndTime = CurrentTime + 3000;
@@ -3818,7 +3822,8 @@ int ShowMatchSequence(boolean curStateChanged) {
     MatchDigit = CurrentTime % 10;
     NumMatchSpins = 0;
     RPU_SetLampState(LAMP_HEAD_MATCH, 1, 0);
-    RPU_SetDisableFlippers();
+    RPU_SetDisableFlippers(true);
+    PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
     ScoreMatches = 0;
   }
 
