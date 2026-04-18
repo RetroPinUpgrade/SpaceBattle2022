@@ -4885,12 +4885,12 @@ unsigned long LastLEDUpdateTime = 0;
 byte LEDPhase = 0;
 unsigned long NumLoops = 0;
 unsigned long LastLoopReportTime = 0;
-extern volatile byte LISYMessageError;
+//extern volatile byte LISYMessageError;
 
 void loop() {
 
-
-  if (DEBUG_MESSAGES) {
+/*
+  if (0 && DEBUG_MESSAGES) {
     NumLoops += 1;
     if (CurrentTime>(LastLoopReportTime+1000)) {
       LastLoopReportTime = CurrentTime;
@@ -4900,7 +4900,7 @@ void loop() {
       NumLoops = 0;
     }
   }
-
+*/
   
   CurrentTime = millis();
   int newMachineState = MachineState;
