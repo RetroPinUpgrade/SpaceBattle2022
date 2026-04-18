@@ -1521,6 +1521,12 @@ void RPU_PushToSolenoidStack(byte solenoidNumber, byte numPushes, boolean disabl
   // If the solenoid stack last index is out of range, then it's an error - return
   if (SpaceLeftOnSolenoidStack() == 0) return;
 
+#if (RPU_OS_HARDWARE_REV==200)
+  // For SA LISY, we only need to push once to the stack
+  // because the MPU will handle the actual pulse width.
+  numPushes = 1; 
+#endif
+
   for (int count = 0; count < numPushes; count++) {
     SolenoidStack[SolenoidStackLast] = solenoidNumber;
 
@@ -4211,21 +4217,20 @@ void RPU_SetSolenoidDefaultPulse(byte solenoidNumber, byte pulseTimeMS) {
   RPU_LISYSetSolenoidPulsetime(solenoidNumber, pulseTimeMS);
 }
 
+volatile byte LISYMessageError = 0;
 
 void RPU_LISYSetSimpleLampState(byte lampNum, byte lampOn) {
   if (lampOn) {
-    LISYOutputSerial.write(LISY_CMD_SET_SIMPLE_LAMP_ON);
+    if (LISYOutputSerial.write(LISY_CMD_SET_SIMPLE_LAMP_ON)==0) LISYMessageError += 1;
   } else {
-    LISYOutputSerial.write(LISY_CMD_SET_SIMPLE_LAMP_OFF);
+    if (LISYOutputSerial.write(LISY_CMD_SET_SIMPLE_LAMP_OFF)==0) LISYMessageError += 1;
   }
-  LISYOutputSerial.write(lampNum);
+  if (LISYOutputSerial.write(lampNum)==0) LISYMessageError += 1;
 }
 
 void RPU_LISYSendSolenoidPulse(byte solNum) {
-  noInterrupts();
-  LISYOutputSerial.write(LISY_CMD_PULSE_SOLENOID);
-  LISYOutputSerial.write(solNum);
-  interrupts();
+  if (LISYOutputSerial.write(LISY_CMD_PULSE_SOLENOID)==0) LISYMessageError += 1;
+  if (LISYOutputSerial.write(solNum)==0) LISYMessageError += 1;
 }
 
 
@@ -4465,10 +4470,12 @@ void RPU_LISYUpdate(unsigned long currentTime) {
     RPU_LISYSendSoundClearCommand();
   } else {
     // Burst requests to clear out any backlog on Pete's board
+    noInterrupts();
     for (byte i = 0; i < 3; i++) {
       LISYOutputSerial.write(LISY_CMD_GET_CHANGED_SWITCHES);
       RPU_LISYPushExpectation(LISY_RESPONSE_SWITCHES, currentTime);
     }
+    interrupts();
   }
 }
 

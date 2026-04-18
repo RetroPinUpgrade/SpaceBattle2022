@@ -618,6 +618,7 @@ void setup() {
 
   // Read parameters from EEProm
   ReadStoredParameters();
+  BallSaveNumSeconds = 0;
   RPU_SetCoinLockout((Credits >= MaximumCredits) ? true : false, SOLCONT_COIN_LOCKOUT);
 
   CurrentScores[0] = SPACE_BATTLE_MAJOR_VERSION;
@@ -1914,7 +1915,7 @@ boolean PlaySoundEffectWhenPossible(unsigned short soundEffectNum, unsigned long
   SoundEffectQueue[count].priority = priority;
   SoundEffectQueue[count].inUse = true;
 
-  if (DEBUG_MESSAGES) {
+  if (0 && DEBUG_MESSAGES) {
     char buf[128];
     sprintf(buf, "Sound 0x%04X slotted at %d\n\r", soundEffectNum, count);
     Serial.write(buf);
@@ -2192,7 +2193,7 @@ void UpdateSoundQueue() {
 
   if (highestPrioritySound != 0xFF) {
     
-    if (DEBUG_MESSAGES) {
+    if (0 && DEBUG_MESSAGES) {
       char buf[128];
       sprintf(buf, "Ready to play sound 0x%04X\n\r", SoundEffectQueue[highestPrioritySound].soundEffectNum);
       Serial.write(buf);
@@ -3339,7 +3340,6 @@ int ManageGameMode() {
           RPU_SetDisableFlippers(true);
           RPU_TurnOffAllLamps();
           StopBackgroundSong();
-          PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
 //          StopAudio();
           RPU_PushToTimedSolenoidStack(SOL_SAUCER, 16, CurrentTime + 5000, true);
           if (DEBUG_MESSAGES) {
@@ -3477,7 +3477,6 @@ int ManageGameMode() {
       if (GameModeStartTime == 0) {
         RPU_DisableSolenoidStack();
         RPU_SetDisableFlippers(true);
-        PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
         RPU_TurnOffAllLamps();
         GameModeStartTime = CurrentTime;
         GameModeEndTime = CurrentTime + 3000;
@@ -3506,7 +3505,6 @@ int ManageGameMode() {
       if (GameModeStartTime == 0) {
         RPU_DisableSolenoidStack();
         RPU_SetDisableFlippers(true);
-        PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
         RPU_TurnOffAllLamps();
         GameModeStartTime = CurrentTime;
         GameModeEndTime = CurrentTime + 3000;
@@ -3533,7 +3531,6 @@ int ManageGameMode() {
       if (GameModeStartTime == 0) {
         RPU_DisableSolenoidStack();
         RPU_SetDisableFlippers(true);
-        PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
         RPU_TurnOffAllLamps();
         GameModeStartTime = CurrentTime;
         GameModeEndTime = CurrentTime + 3000;
@@ -3823,7 +3820,6 @@ int ShowMatchSequence(boolean curStateChanged) {
     NumMatchSpins = 0;
     RPU_SetLampState(LAMP_HEAD_MATCH, 1, 0);
     RPU_SetDisableFlippers(true);
-    PlaySoundEffect(SOUND_EFFECT_TILT_WARNING);
     ScoreMatches = 0;
   }
 
@@ -4889,21 +4885,22 @@ unsigned long LastLEDUpdateTime = 0;
 byte LEDPhase = 0;
 unsigned long NumLoops = 0;
 unsigned long LastLoopReportTime = 0;
+extern volatile byte LISYMessageError;
 
 void loop() {
 
-/*
+
   if (DEBUG_MESSAGES) {
     NumLoops += 1;
     if (CurrentTime>(LastLoopReportTime+1000)) {
       LastLoopReportTime = CurrentTime;
       char buf[128];
-      sprintf(buf, "Loop running at %lu Hz\n", NumLoops);
+      sprintf(buf, "Loop running at %lu Hz (msg errors=%d)\n", NumLoops, LISYMessageError);
       Serial.write(buf);
       NumLoops = 0;
     }
   }
-*/
+
   
   CurrentTime = millis();
   int newMachineState = MachineState;
