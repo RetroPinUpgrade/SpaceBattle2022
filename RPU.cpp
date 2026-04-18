@@ -4261,35 +4261,29 @@ void RPU_LISYSendSoundCommand(byte soundNum) {
   interrupts();  
 }
 
-
+volatile byte CurrentLampByte = 0;
 // Rev 200 ISR for passing commands to LISY
 ISR(TIMER1_COMPA_vect) {    //This is the interrupt request (running at 965.3 Hz)
-  if (LISYISRPass) {
-    // Odd passes = lamps
-    for (byte curLampByte = 0; curLampByte < RPU_NUM_LAMP_BANKS; curLampByte++) {
-      byte changedLamps = OldLampStates[curLampByte] ^ LampStates[curLampByte];
-      if (changedLamps) {
-        byte curLampBit = 0x01;
-        for (byte curBit = 0; curBit < 8; curBit++) {
-          if (changedLamps & curLampBit) {
-            byte lampNum = curBit + curLampByte*8;
-            RPU_LISYSetSimpleLampState(lampNum, (LampStates[curLampByte]&curLampBit) ? false : true);
-          }
-          curLampBit *= 2;
-        }
-        OldLampStates[curLampByte] = LampStates[curLampByte];
+  byte changedLamps = OldLampStates[CurrentLampByte] ^ LampStates[CurrentLampByte];
+  if (changedLamps) {
+    byte curLampBit = 0x01;
+    for (byte curBit = 0; curBit < 8; curBit++) {
+      if (changedLamps & curLampBit) {
+        byte lampNum = curBit + CurrentLampByte*8;
+        RPU_LISYSetSimpleLampState(lampNum, (LampStates[CurrentLampByte]&curLampBit) ? false : true);
       }
-    }    
-
-    LISYISRPass = 0;
-  } else {
-    // Even passes = solenoids
-    byte solenoidOn = PullFirstFromSolenoidStack();
-    if (solenoidOn!=SOLENOID_STACK_EMPTY) {
-      RPU_LISYSendSolenoidPulse(solenoidOn);
+      curLampBit *= 2;
     }
+    OldLampStates[CurrentLampByte] = LampStates[CurrentLampByte];
+  }
+  CurrentLampByte += 1;
+  if (CurrentLampByte>=RPU_NUM_LAMP_BANKS) {
+    CurrentLampByte = 0;
+  }
 
-    LISYISRPass = 1;
+  byte solenoidOn = PullFirstFromSolenoidStack();
+  if (solenoidOn!=SOLENOID_STACK_EMPTY) {
+    RPU_LISYSendSolenoidPulse(solenoidOn);
   }
 
 }
